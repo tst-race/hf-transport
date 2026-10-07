@@ -1,25 +1,22 @@
-cmake_minimum_required(VERSION 3.16)
-project(hf-stego-transport VERSION 1.0.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.20)
+project(hf-stego-transport LANGUAGES CXX)
 
-# C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Build shared libraries
-set(BUILD_SHARED_LIBS ON)
-
-# Detect architecture for SDK paths
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-    set(TARGET_ARCH "x86_64")
-elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-    set(TARGET_ARCH "arm64-v8a")
-else()
-    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+set(BUILD_VERSION "" CACHE STRING "Version of the plugin being built")
+if("${BUILD_VERSION}" STREQUAL "")
+    message(SEND_ERROR "Missing or empty BUILD_VERSION argument")
 endif()
 
 # SDK paths (provided by raceboat-plugin-builder image)
-set(SDK_PREFIX "/linux/${TARGET_ARCH}")
+set(SDK_PREFIX "/linux/x86_64")
+if(NOT EXISTS "${SDK_PREFIX}")
+    # Try arm64
+    set(SDK_PREFIX "/linux/arm64-v8a")
+endif()
+
 set(SDK_INCLUDE_DIR "${SDK_PREFIX}/include")
 set(SDK_LIB_DIR "${SDK_PREFIX}/lib")
 
@@ -40,6 +37,9 @@ if(NOT EXISTS "${RACE_SDK_LIBRARY}")
     message(FATAL_ERROR "Raceboat SDK not found at ${RACE_SDK_LIBRARY}")
 endif()
 
+# Plugin kit directory
+set(PLUGIN_KIT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/kit/artifacts/linux-x86_64-server/PluginHFTransport)
+
 # Source files - ONLY transport component
 set(TRANSPORT_SOURCES
     source/PluginHFTransport.cpp
@@ -59,19 +59,29 @@ set(COMMON_LIBS
 # Transport component plugin
 add_library(PluginHFTransport MODULE ${TRANSPORT_SOURCES})
 target_link_libraries(PluginHFTransport ${COMMON_LIBS})
+target_compile_definitions(PluginHFTransport PUBLIC
+    BUILD_VERSION="${BUILD_VERSION}"
+)
 set_target_properties(PluginHFTransport PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    NO_SONAME ON
     PREFIX "lib"
     SUFFIX ".so"
     OUTPUT_NAME "PluginHFTransport"
 )
 
-# Install targets - only transport library
-install(TARGETS PluginHFTransport
-    LIBRARY DESTINATION .
+# Copy built library to kit directory
+add_custom_command(TARGET PluginHFTransport POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${PLUGIN_KIT_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:PluginHFTransport> ${PLUGIN_KIT_DIR}/
+    BYPRODUCTS ${PLUGIN_KIT_DIR}/libPluginHFTransport.so
 )
 
-# Install manifest
-install(FILES source/manifest.json DESTINATION .)
-
-# CPack for packaging (optional)
-include(CPack)
+# Copy manifest to kit directory
+add_custom_command(
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${PLUGIN_KIT_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/source/manifest.json ${PLUGIN_KIT_DIR}/
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/source/manifest.json
+    OUTPUT ${PLUGIN_KIT_DIR}/manifest.json
+)
+add_custom_target(PluginHFTransportManifest ALL DEPENDS ${PLUGIN_KIT_DIR}/manifest.json)
