@@ -1,0 +1,12 @@
+{
+  "scenario_id": "hf-send-recv",
+  "mode": "send-recv",
+  "nodes": [
+    {"id": "creator", "role": "creator", "slots": {"channel": "hfTransportComposition"}},
+    {"id": "loader", "role": "loader", "slots": {"channel": "hfTransportComposition"}}
+  ],
+  "wait_time": 60,
+  "send_message": "HF transport send-recv test",
+  "reply_message": "HF transport reply",
+  "description": "Creator sends, Loader receives. Verifies full POST→FETCH cycle."
+}

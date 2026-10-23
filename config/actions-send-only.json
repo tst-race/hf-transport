@@ -1,0 +1,15 @@
+[
+    {"timestamp": 0.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 10.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 20.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 30.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 40.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 50.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 60.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 70.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 80.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 90.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 100.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 110.0, "relative": true, "json": {"linkId": "*", "type": "post"}},
+    {"timestamp": 120.0, "relative": true, "json": {"linkId": "*", "type": "post"}}
+]

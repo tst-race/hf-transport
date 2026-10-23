@@ -1,93 +1,63 @@
 {
-    "plugins": [
-        {
-            "file_path": "PluginHFTransport",
-            "plugin_type": "comms",
-            "file_type": "shared_library",
-            "node_type": "any",
-            "shared_library_path": "libPluginHFTransport.so",
-            "channels": [],
-            "transports": ["hf-stego-transport"],
-            "usermodels": [],
-            "encodings": []
-        }
-    ],
-    "channel_properties": {
-        "hf-stego-transport": {
-            "channelGid": "hf-stego-transport",
-            "connectionType": "CT_INDIRECT",
-            "linkDirection": "LD_BIDI",
-            "transmissionType": "TT_MULTICAST",
-            "sendType": "ST_STORED_ASYNC",
-            "reliable": true,
-            "isFlushable": false,
-            "duration_s": 86400,
-            "period_s": 3600,
-            "mtu": 52428800,
-            "creatorExpected": {
-                "send": {
-                    "latency_ms": 5000,
-                    "bandwidth_bps": 1000000,
-                    "loss": 0.01
-                },
-                "receive": {
-                    "latency_ms": 5000,
-                    "bandwidth_bps": 1000000,
-                    "loss": 0.01
-                }
-            },
-            "loaderExpected": {
-                "send": {
-                    "latency_ms": 5000,
-                    "bandwidth_bps": 1000000,
-                    "loss": 0.01
-                },
-                "receive": {
-                    "latency_ms": 5000,
-                    "bandwidth_bps": 1000000,
-                    "loss": 0.01
-                }
-            },
-            "roles": [
-                {
-                    "roleName": "default",
-                    "linkSide": "LS_BOTH"
-                }
-            ],
-            "maxLinks": 10,
-            "supported_hints": []
-        }
-    },
-    "channel_parameters": [
-        {
-            "key": "hf_token",
-            "required": true,
-            "type": "string",
-            "description": "Hugging Face Personal Access Token with write scope",
-            "roles": ["sender"]
+  "plugins": [
+    {
+      "file_path": "PluginHFTransport",
+      "plugin_type": "comms",
+      "file_type": "shared_library",
+      "node_type": "any",
+      "shared_library_path": "libHFTransport.so",
+      "transports": ["hfTransport"],
+      "usermodels": [],
+      "encodings": []
+    }
+  ],
+  "channel_properties": {
+    "hfTransportComposition": {
+      "bootstrap": false,
+      "channelGid": "hfTransportComposition",
+      "connectionType": "CT_INDIRECT",
+      "creatorExpected": {
+        "send": {
+          "bandwidth": 1000000,
+          "latency": 10000,
+          "loss": 0.001
         },
-        {
-            "key": "hf_username",
-            "required": true,
-            "type": "string",
-            "description": "Hugging Face username",
-            "roles": ["sender", "receiver"]
+        "receive": {
+          "bandwidth": 5000000,
+          "latency": 5000,
+          "loss": 0.001
+        }
+      },
+      "loaderExpected": {
+        "send": {
+          "bandwidth": 1000000,
+          "latency": 10000,
+          "loss": 0.001
         },
-        {
-            "key": "carrier_model",
-            "required": false,
-            "type": "string",
-            "default": "bert-base-uncased",
-            "description": "Base model to use as steganography carrier",
-            "roles": ["sender", "receiver"]
+        "receive": {
+          "bandwidth": 5000000,
+          "latency": 5000,
+          "loss": 0.001
         }
-    ],
-    "compositions": [
-        {
-            "id": "hf-stego-transport",
-            "transport": "hf-stego-transport",
-            "usermodel": "twoSixFileBasedUserModel",
-            "encodings": ["base64"]
-        }
-    ]
+      },
+      "linkDirection": "LD_CREATOR_TO_LOADER",
+      "transmissionType": "TT_UNICAST",
+      "sendType": "ST_STORED_ASYNC",
+      "reliable": true,
+      "isFlushable": false,
+      "duration_s": 86400,
+      "period_s": 3600,
+      "mtu": 52428800,
+      "maxLinks": 10,
+      "supportedHints": ["polling_interval_ms"]
+    }
+  },
+  "compositions": [
+    {
+      "id": "hfTransportComposition",
+      "transport": "hfTransport",
+      "usermodel": "twoSixFileBasedUserModel",
+      "encodings": ["noop"]
+    }
+  ]
 }

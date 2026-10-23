@@ -1,6 +1,0 @@
-{
-    "version": 4,
-    "include": [
-        "/opt/race/race-cmake-modules/presets/linux_x86_64.json"
-    ]
-}

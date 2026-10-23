@@ -1,0 +1,11 @@
+{
+  "scenario_id": "hf-client-connect",
+  "mode": "client-connect",
+  "nodes": [
+    {"id": "listener", "role": "listener", "slots": {"channel": "hfTransportComposition"}},
+    {"id": "connector", "role": "connector", "slots": {"channel": "hfTransportComposition"}}
+  ],
+  "wait_time": 90,
+  "description": "Bidirectional via two unidirectional links. Both directions work.",
+  "messages": 3
+}

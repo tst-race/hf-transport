@@ -1,0 +1,10 @@
+{
+  "scenario_id": "hf-send-only",
+  "mode": "send",
+  "nodes": [
+    {"id": "creator", "role": "creator", "slots": {"channel": "hfTransportComposition"}}
+  ],
+  "wait_time": 30,
+  "send_message": "HF transport send-only test",
+  "description": "Creator sends data, no receiver. Verifies POST action and HF upload."
+}
