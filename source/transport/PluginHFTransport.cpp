@@ -373,25 +373,43 @@ ComponentStatus PluginHFTransport::createLinkFromAddress(RaceHandle handle, cons
     // Create repo with the given repoId from address
     std::string initialCommitSha = address.initialCommitSha.empty() ? "main" : address.initialCommitSha;
     
-    try {
-        // Create repo via HF stub using the address's repoId
-        auto repoInfo = hfStub_->create_repo(address.repoId, false, false);
-        if (!repoInfo.commitSha.empty()) {
-            initialCommitSha = repoInfo.commitSha;
+    std::string fullRepoId = hfUsername_ + "/" + address.repoId;
+    if (hfStub_->repo_exists(fullRepoId)) {
+        // Reuse existing repo: do not create another initial commit.
+        auto commits = hfStub_->list_commits(fullRepoId, "");
+        if (!commits.empty()) {
+            initialCommitSha = commits.front().sha;
+        } else if (address.initialCommitSha.empty()) {
+            initialCommitSha = "main";
+        } else {
+            initialCommitSha = address.initialCommitSha;
         }
-        
-        // Create initial commit with placeholder file (uses commit API, not large file upload)
-        initialCommitSha = hfStub_->create_initial_commit(hfUsername_ + "/" + address.repoId, "Initial commit");
-        
-    } catch (const HfError& e) {
-        // Repo might already exist (e.g., from previous run), that's OK
-        logInfo(logPrefixParam + "Repo creation note (may already exist): " + std::string(e.what()));
-    } catch (const std::exception& e) {
-        logError(logPrefixParam + "Repo creation failed (std::exception): " + std::string(e.what()));
-        return COMPONENT_ERROR;
-    } catch (...) {
-        logError(logPrefixParam + "Repo creation failed (unknown exception)");
-        return COMPONENT_ERROR;
+        logInfo(logPrefixParam + "Reusing existing repo " + fullRepoId + ", cursor=" + initialCommitSha);
+    } else {
+        try {
+            // Create repo via HF stub using the address's repoId
+            auto repoInfo = hfStub_->create_repo(address.repoId, false, false);
+            if (!repoInfo.commitSha.empty()) {
+                initialCommitSha = repoInfo.commitSha;
+            }
+
+            // Create initial commit with placeholder file (uses commit API, not large file upload)
+            initialCommitSha = hfStub_->create_initial_commit(fullRepoId, "Initial commit");
+
+        } catch (const HfError& e) {
+            // Repo might already exist (race), fall back to latest commit
+            logInfo(logPrefixParam + "Repo creation note (may already exist): " + std::string(e.what()));
+            auto commits = hfStub_->list_commits(fullRepoId, "");
+            if (!commits.empty()) {
+                initialCommitSha = commits.front().sha;
+            }
+        } catch (const std::exception& e) {
+            logError(logPrefixParam + "Repo creation failed (std::exception): " + std::string(e.what()));
+            return COMPONENT_ERROR;
+        } catch (...) {
+            logError(logPrefixParam + "Repo creation failed (unknown exception)");
+            return COMPONENT_ERROR;
+        }
     }
     
     // Update address with actual commit SHA
@@ -484,6 +502,8 @@ ComponentStatus PluginHFTransport::enqueueContent(const EncodingParameters& para
     TRACE_METHOD();
     
     std::string linkId = params.linkId;
+    // Prefer a specific link id supplied by the framework over a wildcard
+    // from the action JSON, so content is queued on the correct link.
     std::string actionType = "";
     if (linkId.empty()) {
         // Parse from action JSON (framework may not populate params.linkId)
@@ -504,6 +524,24 @@ ComponentStatus PluginHFTransport::enqueueContent(const EncodingParameters& para
     // (FETCH actions poll for incoming data, they don't send)
     if (actionType == "fetch" && linkId == "*") {
         return COMPONENT_OK;
+    }
+    
+    // For POST actions with wildcard linkId, enqueue content on all links
+    // TODO: Fix this - content should only be enqueued on the link that the content is for. Otherwise content encoded with an outgoing package may be sent to all clients rather than just the intended recipient.
+    // Clarification: can we determine this information from the parameters of this function?
+    if (actionType == "post" && linkId == "*") {
+        ComponentStatus lastStatus = COMPONENT_OK;
+        auto linkIds = links_.getAllIds();
+        for (const auto& id : linkIds) {
+            auto l = links_.get(id);
+            if (l) {
+                ComponentStatus status = l->enqueueContent(action.actionId, content);
+                if (status != COMPONENT_OK) {
+                    lastStatus = status;
+                }
+            }
+        }
+        return lastStatus;
     }
     
     if (linkId.empty()) {
@@ -555,6 +593,22 @@ ComponentStatus PluginHFTransport::doAction(const std::vector<RaceHandle>& handl
                 auto link = links_.get(id);
                 if (link) {
                     ComponentStatus status = link->fetch(handles);
+                    if (status != COMPONENT_OK) {
+                        lastStatus = status;
+                    }
+                }
+            }
+            return lastStatus;
+        }
+        
+        // Handle wildcard linkId ("*") for POST actions - post on all links
+        if (actionType == "post" && linkId == "*") {
+            ComponentStatus lastStatus = COMPONENT_OK;
+            auto linkIds = links_.getAllIds();
+            for (const auto& id : linkIds) {
+                auto l = links_.get(id);
+                if (l) {
+                    ComponentStatus status = l->post(handles, action.actionId);
                     if (status != COMPONENT_OK) {
                         lastStatus = status;
                     }

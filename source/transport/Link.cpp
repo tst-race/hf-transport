@@ -129,9 +129,9 @@ std::string Link::postOnActionThread(const std::string& currentHeadSha, const st
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = contentQueue_.find(actionId);
         if (it == contentQueue_.end()) {
-            logError("No content queued for actionId " + std::to_string(actionId) + " (queue has: " + 
-                     (contentQueue_.empty() ? "none" : std::to_string(contentQueue_.begin()->first)) + ")");
-            updatePackageStatus(handles, PACKAGE_FAILED_GENERIC);
+            // No content queued for this link/action (e.g. wildcard post on a
+            // link that did not receive an EnqueueData). Skip without failing.
+            logDebug("No content queued for actionId " + std::to_string(actionId) + " on link " + linkId_ + "; skipping post");
             return currentHeadSha;
         }
         content = std::move(it->second);
@@ -199,6 +199,13 @@ bool Link::uploadContent(const std::vector<uint8_t>& content, const std::string&
 
 std::string Link::fetchOnActionThread(const std::string& lastFetchedSha) {
     TRACE_METHOD();
+    // Creator (send) links are not expected to receive messages; skip fetching
+    // to avoid delivering our own posted commits as replies (which would
+    // prematurely finish a send-receive state machine).
+    // TODO: Implement self-send detection to support executing network actions corresponding to fetch without actually forwarding our own messages to ourselves.
+    if (isCreator_) {
+        return lastFetchedSha;
+    }
     
     std::vector<std::pair<std::string, std::vector<uint8_t>>> newMessages;
     if (!downloadNewCommits(lastFetchedSha, newMessages)) {

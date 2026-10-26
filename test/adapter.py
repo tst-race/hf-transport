@@ -191,13 +191,19 @@ def generate_node_contribution(request: NodeRequest) -> NodeContribution:
     # Pass HF credentials via params (injected at runtime)
     # File-based user model action file depends on scenario mode
     # For send-only mode, use POST-only actions; for others, use default (POST + FETCH)
-    action_file = "config/actions-send-only.json" if mode == "send" else "config/actions.json"
+    if mode == "send" and request.role == "connector":
+        action_file = "/kits/PluginHFTransport/config/actions-send-only.json"
+    elif mode == "send":
+        action_file = "config/actions.json"
+    else:
+        action_file = "/kits/PluginHFTransport/config/actions-combined.json"
     
+    composition_name = composition or DEFAULT_COMPOSITION
     contribution.params.update({
         "PluginHFTransport.hf_username": "${HF_USERNAME}",
         "PluginHFTransport.hf_token": "${HF_TOKEN}",
         "PluginHFTransport.carrier_model": "${CARRIER_MODEL:-bert-base-uncased}",
-        "twoSixFileBasedUserModel.actionFile": action_file,
+        f"{composition_name}.actionFile": action_file,
     })
     # Also set as container environment variables for plugin to read directly
     contribution.environment.update({

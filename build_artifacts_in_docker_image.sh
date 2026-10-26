@@ -7,20 +7,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${SCRIPT_DIR}/build"
-DOCKER_IMAGE="ghcr.io/tst-race/raceboat/raceboat-plugin-builder:latest"
+# TODO: add option to specify custom Docker tag and image
+DOCKER_TAG="hf-testing"
+DOCKER_IMAGE="ghcr.io/tst-race/raceboat/raceboat-plugin-builder"
 BUILD_VERSION="${BUILD_VERSION:-1.0.0}"
 HOST_UID=$(id -u)
 HOST_GID=$(id -g)
 
 # Parse arguments
-LOCAL_BUILD=false
 CLEAN=false
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -l|--local)
-            LOCAL_BUILD=true
-            shift
-            ;;
         -c|--clean)
             CLEAN=true
             shift
@@ -45,21 +42,12 @@ fi
 
 mkdir -p "$BUILD_DIR"
 
-if [[ "$LOCAL_BUILD" == "true" ]]; then
-    echo "Building locally (requires raceboat SDK in environment)..."
-    cd "$BUILD_DIR"
-    cmake .. \
-        -DCMAKE_TOOLCHAIN_FILE=/opt/race/race-cmake-modules/toolchains/linux-x86_64.toolchain.cmake \
-        -DBUILD_VERSION="$BUILD_VERSION" \
-        -DNODE_TYPE=linux-x86_64
-    make -j$(nproc)
-else
-    echo "Building in Docker container: $DOCKER_IMAGE"
+    echo "Building in Docker container: $DOCKER_IMAGE:$DOCKER_TAG"
     docker run --rm \
         -u "$HOST_UID:$HOST_GID" \
         -v "$SCRIPT_DIR:/workspace" \
         -w /workspace/build \
-        "$DOCKER_IMAGE" \
+        "$DOCKER_IMAGE:$DOCKER_TAG" \
         bash -c "
             cmake .. \
                 -DCMAKE_TOOLCHAIN_FILE=/opt/race/race-cmake-modules/toolchains/linux-x86_64.toolchain.cmake \
@@ -67,7 +55,6 @@ else
                 -DNODE_TYPE=linux-x86_64 && \
             make -j\$(nproc)
         "
-fi
 
 # Copy artifacts to kit directory
 echo "Copying artifacts to kit..."
@@ -95,6 +82,14 @@ if [[ -f "$SCRIPT_DIR/source/manifest.json" ]]; then
 else
     echo "ERROR: manifest.json not found!"
     exit 1
+fi
+
+# Copy config files (action schedules, etc.)
+if [[ -d "$SCRIPT_DIR/config" ]]; then
+    mkdir -p "$CLIENT_DIR/config" "$SERVER_DIR/config"
+    cp "$SCRIPT_DIR/config/"* "$CLIENT_DIR/config/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/config/"* "$SERVER_DIR/config/" 2>/dev/null || true
+    echo "Copied config files"
 fi
 
 echo "Build complete! Artifacts in: $KIT_BASE_DIR"

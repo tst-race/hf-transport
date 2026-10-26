@@ -286,7 +286,7 @@ bool HfTransportStub::repo_exists(const std::string& repoId) {
     
     // First try REST API
     try {
-        std::string url = apiBase_ + "/repos/" + repoId;
+        std::string url = apiBase_ + "/models/" + repoId;
         http_get(url, auth_header());
         return true;
     } catch (const NotFoundError&) {
@@ -326,7 +326,7 @@ bool HfTransportStub::repo_exists(const std::string& repoId) {
 RepoInfo HfTransportStub::get_repo_info(const std::string& repoId) {
     TRACE_METHOD();
     
-    std::string url = apiBase_ + "/repos/" + repoId;
+    std::string url = apiBase_ + "/models/" + repoId;
     std::string response = http_get(url, auth_header());
     json j = json::parse(response);
     
@@ -539,10 +539,7 @@ std::vector<CommitInfo> HfTransportStub::list_commits(const std::string& repoId,
     
     // Try HF Hub REST API first
     try {
-        std::string url = apiBase_ + "/repos/" + repoId + "/commits?limit=100";
-        if (!sinceSha.empty()) {
-            url += "&since=" + sinceSha;
-        }
+        std::string url = apiBase_ + "/models/" + repoId + "/commits/main";
         
         std::string response = http_get(url, auth_header());
         json commits = json::parse(response);
@@ -550,9 +547,13 @@ std::vector<CommitInfo> HfTransportStub::list_commits(const std::string& repoId,
         std::vector<CommitInfo> results;
         for (const auto& commit : commits) {
             CommitInfo info;
-            info.sha = commit.value("oid", "");
+            info.sha = commit.value("id", "");
             info.message = commit.value("title", "");
             info.timestamp = commit.value("date", "");
+            // Only include commits newer than sinceSha
+            if (!sinceSha.empty() && info.sha == sinceSha) {
+                break;
+            }
             results.push_back(info);
         }
         
