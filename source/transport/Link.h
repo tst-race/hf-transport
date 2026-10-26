@@ -32,6 +32,8 @@ public:
     const LinkProperties& getProperties() const { return properties_; }
     const HfLinkAddress& getAddress() const { return address_; }
     bool isCreator() const { return isCreator_; }
+    bool ownsRepo() const { return ownsRepo_; }
+    void setOwnsRepo(bool v) { ownsRepo_ = v; }
     
     ComponentStatus enqueueContent(uint64_t actionId, const std::vector<uint8_t>& content);
     ComponentStatus dequeueContent(uint64_t actionId);
@@ -65,6 +67,7 @@ protected:
     LinkProperties properties_;
     HfLinkAddress address_;
     bool isCreator_{false};
+    bool ownsRepo_{true};
     
     // Runtime mutable state
     std::string currentHeadCommitSha_;      // Latest known commit

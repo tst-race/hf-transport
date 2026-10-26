@@ -360,6 +360,7 @@ ComponentStatus PluginHFTransport::createLinkFromAddress(RaceHandle handle, cons
     
     // Parse address (supports both JSON and hf:// formats)
     HfLinkAddress address = HfLinkAddress::parse(linkAddress);
+    bool reusedRepo = false;
     
     // For creator role, allow empty initialCommitSha (will be populated after repo creation)
     // For loader role, initialCommitSha is required to know where to start fetching
@@ -384,6 +385,7 @@ ComponentStatus PluginHFTransport::createLinkFromAddress(RaceHandle handle, cons
         } else {
             initialCommitSha = address.initialCommitSha;
         }
+        reusedRepo = true;
         logInfo(logPrefixParam + "Reusing existing repo " + fullRepoId + ", cursor=" + initialCommitSha);
     } else {
         try {
@@ -417,6 +419,9 @@ ComponentStatus PluginHFTransport::createLinkFromAddress(RaceHandle handle, cons
     
     // Create link instance (isCreator = true for sender/creator)
     auto link = createLinkInstance(linkId, address, defaultLinkProperties_, true);
+    if (reusedRepo) {
+        link->setOwnsRepo(false);
+    }
     
     // Reset cursor to initial commit (overwrite any stale persisted cursor from previous runs)
     // The listener/creator should always start fresh from the initial commit
@@ -441,7 +446,7 @@ ComponentStatus PluginHFTransport::destroyLink(RaceHandle handle, const LinkID& 
     bool isCreator = link->isCreator();
     
     // Sender deletes repo, receiver just cleans up locally
-    if (isCreator && hfStub_) {
+    if (isCreator && link->ownsRepo() && hfStub_) {
         try {
             hfStub_->delete_repo(hfUsername_ + "/" + link->getAddress().repoId);
             logInfo("Deleted repo: " + link->getAddress().repoId);
