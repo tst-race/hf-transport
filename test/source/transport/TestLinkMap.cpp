@@ -4,16 +4,22 @@
 #include "../../../source/common/LinkMap.h"
 #include "../../../source/transport/Link.h"
 #include "../../../source/transport/LinkAddress.h"
+#include "MockTransportSdk.h"
 
 using namespace hf_transport;
 
+using Messages = std::vector<std::pair<std::string, std::vector<uint8_t>>>;
+
+// Link reads its persisted cursor through the SDK in its constructor, so it needs a (mock) SDK.
+static ::testing::NiceMock<MockTransportSdk> testSdk;
+
 class MockLink : public Link {
 public:
-    MockLink(const LinkID& id) : Link(id, HfLinkAddress(), LinkProperties(), false, nullptr, nullptr) {}
+    MockLink(const LinkID& id) : Link(id, HfLinkAddress(), LinkProperties(), false, nullptr, &testSdk) {}
     MOCK_METHOD(std::string, postOnActionThread, (const std::string&, const std::vector<RaceHandle>&, uint64_t), (override));
     MOCK_METHOD(bool, uploadContent, (const std::vector<uint8_t>&, const std::string&, std::string&), (override));
     MOCK_METHOD(std::string, fetchOnActionThread, (const std::string&), (override));
-    MOCK_METHOD(bool, downloadNewCommits, (const std::string&, std::vector<std::pair<std::string, std::vector<uint8_t>>>&), (override));
+    MOCK_METHOD(bool, downloadNewCommits, (const std::string&, Messages&), (override));
 };
 
 TEST(LinkMapTest, PutAndGet) {

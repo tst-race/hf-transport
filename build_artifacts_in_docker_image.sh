@@ -7,8 +7,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${SCRIPT_DIR}/build"
-# TODO: add option to specify custom Docker tag and image
-DOCKER_TAG="hf-testing"
+# Builder image tag (-t/--image-tag, or RACEBOAT_IMAGE_TAG). Must match the raceboat-runtime tag
+# used by test/run_scenarios.py --image-tag.
+DOCKER_TAG="${RACEBOAT_IMAGE_TAG:-main}"
 DOCKER_IMAGE="ghcr.io/tst-race/raceboat/raceboat-plugin-builder"
 BUILD_VERSION="${BUILD_VERSION:-1.0.0}"
 HOST_UID=$(id -u)
@@ -16,10 +17,29 @@ HOST_GID=$(id -g)
 
 # Parse arguments
 CLEAN=false
+UNIT_TESTS=OFF
 while [[ $# -gt 0 ]]; do
     case $1 in
         -c|--clean)
             CLEAN=true
+            shift
+            ;;
+        -t|--image-tag)
+            [[ $# -ge 2 ]] || { echo "$1 requires a value"; exit 1; }
+            DOCKER_TAG="$2"
+            shift 2
+            ;;
+        --image-tag=*)
+            DOCKER_TAG="${1#*=}"
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [-t|--image-tag TAG] [-c|--clean] [--unit-tests] [-v|--version BUILD_VERSION]"
+            echo "  -t, --image-tag TAG   raceboat-plugin-builder image tag (default: \$RACEBOAT_IMAGE_TAG or hf-testing)"
+            exit 0
+            ;;
+        --unit-tests)
+            UNIT_TESTS=ON
             shift
             ;;
         -v|--version)
@@ -33,7 +53,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "Building HF Transport plugin version: $BUILD_VERSION"
+echo "Building HF Transport plugin version: $BUILD_VERSION (builder image tag: $DOCKER_TAG)"
 
 if [[ "$CLEAN" == "true" ]]; then
     echo "Cleaning build directory..."
@@ -52,6 +72,7 @@ mkdir -p "$BUILD_DIR"
             cmake .. \
                 -DCMAKE_TOOLCHAIN_FILE=/opt/race/race-cmake-modules/toolchains/linux-x86_64.toolchain.cmake \
                 -DBUILD_VERSION=$BUILD_VERSION \
+                -DBUILD_UNIT_TESTS=$UNIT_TESTS \
                 -DNODE_TYPE=linux-x86_64 && \
             make -j\$(nproc)
         "

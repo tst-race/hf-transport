@@ -17,66 +17,44 @@ namespace hf_transport {
 
 using json = nlohmann::json;
 
+namespace {
+
+// Link properties come from the manifest's channel_properties so that file stays the single source
+// of truth for mtu, retention, hints, etc.
+LinkProperties createDefaultLinkProperties(const ChannelProperties& channelProperties) {
+    LinkProperties linkProperties;
+    linkProperties.linkType = LT_BIDI;  // the framework does not act on linkType
+    linkProperties.transmissionType = channelProperties.transmissionType;
+    linkProperties.connectionType = channelProperties.connectionType;
+    linkProperties.sendType = channelProperties.sendType;
+    linkProperties.reliable = channelProperties.reliable;
+    linkProperties.isFlushable = channelProperties.isFlushable;
+    linkProperties.duration_s = channelProperties.duration_s;
+    linkProperties.period_s = channelProperties.period_s;
+    linkProperties.mtu = channelProperties.mtu;
+    linkProperties.worst = channelProperties.creatorExpected;
+    linkProperties.expected = channelProperties.creatorExpected;
+    linkProperties.best = channelProperties.creatorExpected;
+    linkProperties.supportedHints = channelProperties.supportedHints;
+    linkProperties.channelGid = channelProperties.channelGid;
+    return linkProperties;
+}
+
+}  // namespace
+
 PluginHFTransport::PluginHFTransport(ITransportSdk* sdk, const std::string& /*roleName*/)
     : sdk_(sdk), racePersona_(sdk->getActivePersona()) {
     TRACE_METHOD();
-    
+
     channelProperties_ = sdk_->getChannelProperties();
-    
-    // Initialize default link properties from channel properties
-    defaultLinkProperties_.linkType = LT_BIDI;
-    defaultLinkProperties_.connectionType = CT_INDIRECT;
-    defaultLinkProperties_.transmissionType = TT_UNICAST;
-    defaultLinkProperties_.connectionType = CT_INDIRECT;
-    defaultLinkProperties_.sendType = ST_STORED_ASYNC;
-    defaultLinkProperties_.reliable = true;
-    defaultLinkProperties_.isFlushable = false;
-    defaultLinkProperties_.duration_s = 86400;
-    defaultLinkProperties_.period_s = 3600;
-    defaultLinkProperties_.mtu = 52428800;  // 50MB
-    defaultLinkProperties_.channelGid = "hfTransportComposition";
-    defaultLinkProperties_.supportedHints = {"polling_interval_ms"};
-    
-    // Try to get credentials from environment variables first (for automated tests)
-    const char* envToken = std::getenv("HF_TOKEN");
-    const char* envUsername = std::getenv("HF_USERNAME");
-    
-    if (envToken && envToken[0] != '\0') {
-        hfToken_ = envToken;
-        logInfo("Using HF token from environment variable");
-    } else {
-        // Request user input for HF token
-        hfTokenReqHandle_ = sdk_->requestPluginUserInput("hf_token", "HF Write Token (write scope PAT)", true).handle;
-    }
-    
-    if (envUsername && envUsername[0] != '\0') {
-        hfUsername_ = envUsername;
-        logInfo("Using HF username from environment variable");
-    } else {
-        // Request user input for HF username
-        hfUsernameReqHandle_ = sdk_->requestPluginUserInput("hf_username", "HF Username", false).handle;
-    }
-    
-    // If both credentials are available from environment, mark as ready
-    fprintf(stderr, "Constructor: hfToken_=%s, hfUsername_=%s\n", hfToken_.empty() ? "empty" : "set", hfUsername_.empty() ? "empty" : "set");
-    fflush(stderr);
-    if (!hfToken_.empty() && !hfUsername_.empty()) {
-        fprintf(stderr, "Constructor: calling initializeHfStub\n");
-        fflush(stderr);
-        if (initializeHfStub() == COMPONENT_OK) {
-            ready_ = true;
-            sdk_->updateState(COMPONENT_STATE_STARTED);
-            logInfo("PluginHFTransport ready with credentials from environment");
-            fprintf(stderr, "Constructor: initializeHfStub returned OK\n");
-            fflush(stderr);
-        } else {
-            sdk_->updateState(COMPONENT_STATE_FAILED);
-            logError("PluginHFTransport failed: could not initialize HF stub");
-            fprintf(stderr, "Constructor: initializeHfStub returned ERROR\n");
-            fflush(stderr);
-        }
-    }
-    
+    defaultLinkProperties_ = createDefaultLinkProperties(channelProperties_);
+
+    // Answers arrive asynchronously in onUserInputReceived(). They come from
+    //   race-cli --param <composition id>.hf_token=...  --param <composition id>.hf_username=...
+    // (the composition id from manifest.json, NOT the plugin/library name).
+    hfTokenReqHandle_ = sdk_->requestPluginUserInput("hf_token", "HF Write Token (write scope PAT)", true).handle;
+    hfUsernameReqHandle_ = sdk_->requestPluginUserInput("hf_username", "HF Username", false).handle;
+
     logInfo("PluginHFTransport constructed for persona: " + racePersona_);
 }
 
@@ -96,58 +74,50 @@ ComponentStatus PluginHFTransport::onUserInputReceived(RaceHandle handle, bool a
 }
 
 void PluginHFTransport::handleUserInputResponse(RaceHandle handle, bool answered, const std::string& response) {
+    // An unanswered parameter falls back to the environment variable of the same purpose.
+    auto fromEnvironment = [](const char* name) {
+        const char* value = std::getenv(name);
+        return std::string(value ? value : "");
+    };
+
     if (handle == hfTokenReqHandle_) {
         hfTokenReqHandle_ = NULL_RACE_HANDLE;
-        if (answered && !response.empty()) {
-            hfToken_ = response;
-            logInfo("Received HF token");
-        } else {
-            logError("HF token is required but not provided");
+        hfToken_ = (answered && !response.empty()) ? response : fromEnvironment("HF_TOKEN");
+        if (hfToken_.empty()) {
+            logError("HF token is required: pass --param <composition>.hf_token or set HF_TOKEN");
         }
     } else if (handle == hfUsernameReqHandle_) {
         hfUsernameReqHandle_ = NULL_RACE_HANDLE;
-        if (answered && !response.empty()) {
-            hfUsername_ = response;
-            logInfo("Received HF username: " + hfUsername_);
-        } else {
-            logWarning("HF username not provided, will use token default");
+        hfUsername_ = (answered && !response.empty()) ? response : fromEnvironment("HF_USERNAME");
+        if (hfUsername_.empty()) {
+            logWarning("HF username not provided, will use the token's account");
         }
+    } else {
+        return;
     }
-    
-    // Check if all required inputs received
+
+    // Start (or fail) once BOTH answers have arrived.
     if (hfTokenReqHandle_ == NULL_RACE_HANDLE && hfUsernameReqHandle_ == NULL_RACE_HANDLE) {
-        if (!hfToken_.empty()) {
-            if (initializeHfStub() == COMPONENT_OK) {
-                ready_ = true;
-                sdk_->updateState(COMPONENT_STATE_STARTED);
-                logInfo("Transport component ready");
-            }
+        if (!hfToken_.empty() && initializeHfStub() == COMPONENT_OK) {
+            ready_ = true;
+            sdk_->updateState(COMPONENT_STATE_STARTED);
+            logInfo("Transport component ready");
         } else {
             sdk_->updateState(COMPONENT_STATE_FAILED);
-            logError("Transport component failed: missing HF token");
+            logError("Transport component failed to start (missing token or stub initialization error)");
         }
     }
 }
 
 ComponentStatus PluginHFTransport::initializeHfStub() {
     TRACE_METHOD();
-    fprintf(stderr, "initializeHfStub: ENTRY\n");
-    fflush(stderr);
     
     try {
-        fprintf(stderr, "initializeHfStub: creating HfTransportStub\n");
-        fflush(stderr);
         hfStub_ = std::make_unique<HfTransportStub>(hfToken_, hfUsername_);
-        fprintf(stderr, "initializeHfStub: HfTransportStub created\n");
-        fflush(stderr);
         logInfo("HF Transport Stub initialized");
-        fprintf(stderr, "initializeHfStub: logInfo called\n");
-        fflush(stderr);
         return COMPONENT_OK;
     } catch (const std::exception& e) {
         logError("Failed to initialize HF stub: " + std::string(e.what()));
-        fprintf(stderr, "initializeHfStub: exception: %s\n", e.what());
-        fflush(stderr);
         return COMPONENT_ERROR;
     }
 }
@@ -190,6 +160,7 @@ bool PluginHFTransport::preLinkCreate(const std::string& logPrefixParam, RaceHan
     
     if (!ready_) {
         logError(logPrefixParam + "Component not ready");
+        sdk_->onLinkStatusChanged(handle, linkId, LINK_DESTROYED, LinkParameters());
         return false;
     }
     
@@ -279,33 +250,21 @@ ComponentStatus PluginHFTransport::loadLinkAddress(RaceHandle handle, const Link
     std::string logPrefixParam = "loadLinkAddress(" + linkId + "): ";
     TRACE_METHOD();
     
-    fprintf(stderr, "loadLinkAddress: ENTRY, linkId=%s\n", linkId.c_str());
-    fflush(stderr);
     
     if (!preLinkCreate(logPrefixParam, handle, linkId, LS_CREATOR)) {
-        fprintf(stderr, "loadLinkAddress: preLinkCreate returned false\n");
-        fflush(stderr);
         return COMPONENT_ERROR;
     }
     
-    fprintf(stderr, "loadLinkAddress: preLinkCreate OK, hfStub_=%p\n", reinterpret_cast<void*>(hfStub_.get()));
-    fflush(stderr);
     
     // Ensure HF stub is initialized
     logDebug(logPrefixParam + "hfStub_ is " + std::string(hfStub_ ? "valid" : "null"));
     if (!hfStub_) {
         logDebug(logPrefixParam + "Calling initializeHfStub");
-        fprintf(stderr, "loadLinkAddress: hfStub_ is null, calling initializeHfStub\n");
-        fflush(stderr);
         if (initializeHfStub() != COMPONENT_OK) {
             logError(logPrefixParam + "Failed to initialize HF stub");
-            fprintf(stderr, "loadLinkAddress: initializeHfStub failed\n");
-            fflush(stderr);
             return COMPONENT_ERROR;
         }
         logDebug(logPrefixParam + "initializeHfStub returned OK, hfStub_ is " + std::string(hfStub_ ? "valid" : "null"));
-        fprintf(stderr, "loadLinkAddress: initializeHfStub OK, hfStub_=%p\n", reinterpret_cast<void*>(hfStub_.get()));
-        fflush(stderr);
     }
     
     // Parse address (supports both JSON and hf:// formats)

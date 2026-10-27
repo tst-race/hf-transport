@@ -47,6 +47,9 @@ protected:
     
     ComponentStatus initializeHfStub();
 
+    // Generate unique repo ID
+    std::string generateRepoId() const;
+
 private:
     ITransportSdk* sdk_;
     std::string racePersona_;
@@ -63,9 +66,6 @@ private:
     
     // HF stub (initialized after credentials received)
     std::unique_ptr<HfTransportStub> hfStub_;
-    
-    // Generate unique repo ID
-    std::string generateRepoId() const;
 };
 
 } // namespace hf_transport

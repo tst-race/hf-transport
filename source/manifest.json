@@ -6,9 +6,12 @@
       "file_type": "shared_library",
       "node_type": "any",
       "shared_library_path": "libHFTransport.so",
-      "transports": ["hfTransport"],
+      "transports": [
+        "hfTransport"
+      ],
       "usermodels": [],
-      "encodings": []
+      "encodings": [],
+      "channels": []
     }
   ],
   "channel_properties": {
@@ -18,25 +21,25 @@
       "connectionType": "CT_INDIRECT",
       "creatorExpected": {
         "send": {
-          "bandwidth": 1000000,
-          "latency": 10000,
+          "bandwidth_bps": 1000000,
+          "latency_ms": 10000,
           "loss": 0.001
         },
         "receive": {
-          "bandwidth": 5000000,
-          "latency": 5000,
+          "bandwidth_bps": 5000000,
+          "latency_ms": 5000,
           "loss": 0.001
         }
       },
       "loaderExpected": {
         "send": {
-          "bandwidth": 1000000,
-          "latency": 10000,
+          "bandwidth_bps": 1000000,
+          "latency_ms": 10000,
           "loss": 0.001
         },
         "receive": {
-          "bandwidth": 5000000,
-          "latency": 5000,
+          "bandwidth_bps": 5000000,
+          "latency_ms": 5000,
           "loss": 0.001
         }
       },
@@ -49,7 +52,9 @@
       "period_s": 3600,
       "mtu": 52428800,
       "maxLinks": 10,
-      "supportedHints": ["polling_interval_ms"]
+      "supportedHints": [
+        "polling_interval_ms"
+      ]
     }
   },
   "compositions": [
@@ -57,7 +62,9 @@
       "id": "hfTransportComposition",
       "transport": "hfTransport",
       "usermodel": "twoSixFileBasedUserModel",
-      "encodings": ["noop"]
+      "encodings": [
+        "noop"
+      ]
     }
   ]
 }

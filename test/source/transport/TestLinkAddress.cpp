@@ -25,16 +25,25 @@ TEST(LinkAddressTest, ConstructionWithRequiredFields) {
     EXPECT_TRUE(addr.isValid());
 }
 
-TEST(LinkAddressTest, ToString) {
-    HfLinkAddress addr("testuser", "transport-abc123", "commit123", "main");
-    std::string str = addr.toString();
-    EXPECT_EQ(str, "hf://testuser/transport-abc123@commit123");
+// toString() is the JSON form the framework exchanges as a link address.
+TEST(LinkAddressTest, ToStringIsJson) {
+    HfLinkAddress addr("testuser", "transport-abc123", "commit123", "develop");
+    nlohmann::json j = nlohmann::json::parse(addr.toString());
+    EXPECT_EQ(j["type"], "hf");
+    EXPECT_EQ(j["username"], "testuser");
+    EXPECT_EQ(j["repoId"], "transport-abc123");
+    EXPECT_EQ(j["commitSha"], "commit123");
+    EXPECT_EQ(j["branch"], "develop");
 }
 
-TEST(LinkAddressTest, ToStringWithBranch) {
-    HfLinkAddress addr("testuser", "transport-abc123", "commit123", "develop");
-    std::string str = addr.toString();
-    EXPECT_EQ(str, "hf://testuser/transport-abc123@commit123?branch=develop");
+TEST(LinkAddressTest, ParseAcceptsTheAdapterJsonFormat) {
+    HfLinkAddress addr = HfLinkAddress::parse(
+        R"({"type": "hf", "username": "u", "repoId": "r", "commitSha": "", "branch": "main"})");
+    EXPECT_EQ(addr.username, "u");
+    EXPECT_EQ(addr.repoId, "r");
+    EXPECT_EQ(addr.initialCommitSha, "");
+    // An empty commit is legal for a loader (it starts from the first commit) but not "valid".
+    EXPECT_FALSE(addr.isValid());
 }
 
 TEST(LinkAddressTest, FromStringBasic) {
@@ -55,8 +64,7 @@ TEST(LinkAddressTest, FromStringWithBranch) {
 
 TEST(LinkAddressTest, RoundTrip) {
     HfLinkAddress original("testuser", "transport-abc123", "commit123", "develop");
-    std::string str = original.toString();
-    HfLinkAddress parsed = HfLinkAddress::fromString(str);
+    HfLinkAddress parsed = HfLinkAddress::parse(original.toString());
     
     EXPECT_EQ(parsed.username, original.username);
     EXPECT_EQ(parsed.repoId, original.repoId);

@@ -7,6 +7,7 @@ address-format requirements.
 """
 
 import json
+import os
 import platform
 import sys
 import uuid
@@ -15,9 +16,11 @@ from pathlib import Path
 try:
     from adapter_types import NodeContribution, NodeRequest
 except ImportError:
-    _integration_dir = Path(__file__).resolve().parents[2] / "raceboat" / "test" / "integration"
-    if not _integration_dir.is_dir():
-        raise ImportError("HF Transport adapter: could not import adapter_types")
+    _integration_dir = next(
+        (p / "raceboat" / "test" / "integration" for p in Path(__file__).resolve().parents
+         if (p / "raceboat" / "test" / "integration").is_dir()), None)
+    if _integration_dir is None:
+        raise ImportError("HF Transport adapter: could not find raceboat/test/integration")
     sys.path.insert(0, str(_integration_dir))
     from adapter_types import NodeContribution, NodeRequest
 
@@ -88,7 +91,7 @@ def generate_node_contribution(request: NodeRequest) -> NodeContribution:
     # - direction="send": this contribution fills the SEND direction (creator creates repo)
     # - direction="recv": this contribution fills the RECV direction (loader loads repo)
 
-    mode = request.scenario_mode if hasattr(request, 'scenario_mode') else 'send'
+    mode = request.scenario_mode
     username = "${HF_USERNAME}"
     scenario_id = request.scenario_id or "hf-send-recv"
     direction = request.direction  # None, "send", or "recv"
@@ -188,28 +191,29 @@ def generate_node_contribution(request: NodeRequest) -> NodeContribution:
     else:
         raise ValueError(f"HF Transport adapter: unknown role '{request.role}'")
 
-    # Pass HF credentials via params (injected at runtime)
-    # File-based user model action file depends on scenario mode
-    # For send-only mode, use POST-only actions; for others, use default (POST + FETCH)
+    # The file-based user model's relative paths resolve against ITS OWN plugin directory, so always
+    # pass an absolute /kits/<kit>/... path. Send-only connectors only POST; the send-only listener
+    # only FETCHes; every other mode needs both.
     if mode == "send" and request.role == "connector":
-        action_file = "/kits/PluginHFTransport/config/actions-send-only.json"
+        action_name = "actions-send-only.json"
     elif mode == "send":
-        action_file = "config/actions.json"
+        action_name = "actions.json"
     else:
-        action_file = "/kits/PluginHFTransport/config/actions-combined.json"
-    
+        action_name = "actions-combined.json"
+
+    for variable in ("HF_USERNAME", "HF_TOKEN"):
+        if not os.environ.get(variable):
+            raise ValueError(f"{variable} must be set in the environment "
+                             "(e.g. `set -a; . ../.env; set +a`) before running HF scenarios")
+
+    # --param keys are "<composition id>.<key>", where <key> is what the component passes to
+    # sdk->requestPluginUserInput(). Values are ${VAR} placeholders that docker compose substitutes
+    # at `up` time, so no credential is ever written into the generated files.
     composition_name = composition or DEFAULT_COMPOSITION
     contribution.params.update({
-        "PluginHFTransport.hf_username": "${HF_USERNAME}",
-        "PluginHFTransport.hf_token": "${HF_TOKEN}",
-        "PluginHFTransport.carrier_model": "${CARRIER_MODEL:-bert-base-uncased}",
-        f"{composition_name}.actionFile": action_file,
-    })
-    # Also set as container environment variables for plugin to read directly
-    contribution.environment.update({
-        "HF_USERNAME": "${HF_USERNAME}",
-        "HF_TOKEN": "${HF_TOKEN}",
-        "CARRIER_MODEL": "${CARRIER_MODEL:-bert-base-uncased}",
+        f"{composition_name}.hf_username": "${HF_USERNAME}",
+        f"{composition_name}.hf_token": "${HF_TOKEN}",
+        f"{composition_name}.actionFile": f"/kits/{KIT_NAME}/config/{action_name}",
     })
 
     return contribution

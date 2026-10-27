@@ -22,4 +22,11 @@ setup_project_test_targets(hf-stego-transport UNIT)
 setup_project_format_targets(hf-stego-transport)
 
 add_subdirectory(source)
-# add_subdirectory(test)  # Disabled for now
+
+# Unit tests are built only on request: cmake -DBUILD_UNIT_TESTS=ON (./build_artifacts_in_docker_image.sh
+# --unit-tests); run them with ./run_unit_tests.sh.
+option(BUILD_UNIT_TESTS "Build the gtest unit tests" OFF)
+if(BUILD_UNIT_TESTS)
+    enable_testing()
+    add_subdirectory(test/source)
+endif()
